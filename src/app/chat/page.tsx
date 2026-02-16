@@ -1,0 +1,814 @@
+"use client";
+
+import { useEffect, useState, useCallback, useRef } from "react";
+import Link from "next/link";
+import { useAuth } from "@/components/AuthProvider";
+import { useWebSocket } from "@/hooks/useWebSocket";
+import { Avatar } from "@/components/Avatar";
+import {
+  ChatBubbleIcon,
+  HomeIcon,
+  SettingsIcon,
+  FriendsIcon,
+  PaperclipIcon,
+  PaperPlaneIcon,
+  SearchIcon,
+  PlusIcon,
+  VideoCallIcon,
+  PhoneIcon,
+  InfoCircleIcon,
+  RobotIcon,
+  EmojiIcon,
+  BellIcon,
+  DotsThreeIcon,
+  CheckDoubleIcon,
+  MicrophoneIcon,
+  FilterIcon,
+  DocumentIcon,
+  AddressBookIcon,
+  CalendarIcon,
+} from "@/components/Icons";
+
+type User = { id: string; email: string; name: string; avatarUrl: string | null };
+type Conv = {
+  id: string;
+  otherUser: User;
+  lastMessage: { content: string; createdAt: string; senderId: string } | null;
+};
+type Msg = {
+  id: string;
+  content: string;
+  createdAt: string;
+  sender: { id: string; name: string; avatarUrl: string | null };
+  isMe: boolean;
+};
+
+export default function ChatPage() {
+  const { user, token, logout } = useAuth();
+  const [users, setUsers] = useState<User[]>([]);
+  const [conversations, setConversations] = useState<Conv[]>([]);
+  const [selectedConv, setSelectedConv] = useState<{ id: string; otherUser: User } | null>(null);
+  const [messages, setMessages] = useState<Msg[]>([]);
+  const [input, setInput] = useState("");
+  const [loadingConv, setLoadingConv] = useState(false);
+  const [loadingUsers, setLoadingUsers] = useState(true);
+  const [showNewChat, setShowNewChat] = useState(false);
+  const [showRightPanel, setShowRightPanel] = useState(false);
+  const [rightPanelTab, setRightPanelTab] = useState<"files" | "settings">("files");
+  const [activeTab, setActiveTab] = useState<"messages" | "teams">("messages");
+  const [contextMenu, setContextMenu] = useState<{ convId: string; x: number; y: number } | null>(null);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const isChatWithAI = selectedConv?.otherUser?.id === "__ai__";
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  function relativeTime(iso: string): string {
+    const d = new Date(iso);
+    const now = new Date();
+    const diffMs = now.getTime() - d.getTime();
+    const diffM = Math.floor(diffMs / 60000);
+    const diffH = Math.floor(diffM / 60);
+    const diffD = Math.floor(diffH / 24);
+    if (diffM < 1) return "Just now";
+    if (diffM < 60) return `${diffM} min ago`;
+    if (diffH < 24) return `${diffH} hour ago`;
+    if (diffD === 1) return "Yesterday";
+    if (diffD < 7) return `${diffD} days ago`;
+    return d.toLocaleDateString();
+  }
+  const selectedConvIdRef = useRef<string | null>(null);
+  const userIdRef = useRef<string | null>(null);
+  selectedConvIdRef.current = selectedConv?.id ?? null;
+  userIdRef.current = user?.id ?? null;
+
+  const fetchUsers = useCallback(async () => {
+    if (!token) return;
+    setLoadingUsers(true);
+    const res = await fetch("/api/users", { headers: { Authorization: `Bearer ${token}` } });
+    if (res.ok) setUsers(await res.json());
+    setLoadingUsers(false);
+  }, [token]);
+
+  const fetchConversations = useCallback(async () => {
+    if (!token) return;
+    const res = await fetch("/api/conversations", { headers: { Authorization: `Bearer ${token}` } });
+    if (res.ok) setConversations(await res.json());
+  }, [token]);
+
+  const tokenRefForFetch = useRef(token);
+  tokenRefForFetch.current = token;
+
+  const handleIncomingMessage = useCallback((payload: {
+    id: string;
+    conversationId: string;
+    senderId: string;
+    content: string;
+    createdAt: string;
+    sender: { id: string; name: string; avatarUrl: string | null };
+  }) => {
+    const convId = selectedConvIdRef.current;
+    const isMe = payload.senderId === userIdRef.current;
+
+    if (convId === payload.conversationId) {
+      setMessages((prev) => {
+        if (prev.some((m) => m.id === payload.id)) return prev;
+        if (isMe) {
+          let tempIdx = -1;
+          for (let i = prev.length - 1; i >= 0; i--) {
+            if (prev[i].id.startsWith("temp-") && prev[i].content === payload.content) {
+              tempIdx = i;
+              break;
+            }
+          }
+          if (tempIdx >= 0) {
+            const next = [...prev];
+            next[tempIdx] = {
+              id: payload.id,
+              content: payload.content,
+              createdAt: payload.createdAt,
+              sender: payload.sender,
+              isMe: true,
+            };
+            return next;
+          }
+        }
+        return [
+          ...prev,
+          {
+            id: payload.id,
+            content: payload.content,
+            createdAt: payload.createdAt,
+            sender: payload.sender,
+            isMe,
+          },
+        ];
+      });
+      // Sync from DB shortly after so the other user always sees it even if real-time missed
+      const cid = payload.conversationId;
+      setTimeout(() => {
+        const t = tokenRefForFetch.current;
+        if (!t) return;
+        fetch(`/api/conversations/${cid}/messages`, {
+          headers: { Authorization: `Bearer ${t}` },
+        })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((data) => {
+            if (data && selectedConvIdRef.current === cid) {
+              setMessages(data.messages || []);
+            }
+          })
+          .catch(() => {});
+      }, 400);
+    } else {
+      fetchConversations();
+    }
+  }, [fetchConversations]);
+
+  const { onlineUserIds, lastMessage, connected, sendBroadcast } = useWebSocket(token, handleIncomingMessage);
+
+  useEffect(() => {
+    fetchUsers();
+    fetchConversations();
+  }, [fetchUsers, fetchConversations]);
+
+  // Refetch messages from DB when conversation is selected or window regains focus
+  const refetchMessagesFromDb = useCallback(async () => {
+    if (!token || !selectedConv || selectedConv.id === "__ai__") return;
+    try {
+      const res = await fetch(`/api/conversations/${selectedConv.id}/messages`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setMessages(Array.isArray(data.messages) ? data.messages : []);
+      }
+    } catch {}
+  }, [token, selectedConv?.id]);
+
+  useEffect(() => {
+    if (selectedConv) refetchMessagesFromDb();
+  }, [selectedConv?.id, refetchMessagesFromDb]);
+
+  const selectedConvRef = useRef(selectedConv);
+  selectedConvRef.current = selectedConv;
+
+  useEffect(() => {
+    function onFocus() {
+      fetchConversations();
+      if (selectedConvRef.current) {
+        const convId = selectedConvRef.current.id;
+        if (token) {
+          fetch(`/api/conversations/${convId}/messages`, {
+            headers: { Authorization: `Bearer ${token}` },
+          })
+            .then((r) => r.ok ? r.json() : null)
+            .then((data) => data && Array.isArray(data.messages) && setMessages(data.messages))
+            .catch(() => {});
+        }
+      }
+    }
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [fetchConversations, token]);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  async function openConversation(otherUser: User) {
+    setShowNewChat(false);
+    setLoadingConv(true);
+    try {
+      const res = await fetch("/api/conversations/find-or-create", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ otherUserId: otherUser.id }),
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      const msgRes = await fetch(`/api/conversations/${data.id}/messages`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const msgData = msgRes.ok ? await msgRes.json() : { messages: [] };
+      setSelectedConv({ id: data.id, otherUser: data.otherUser });
+      setMessages(Array.isArray(msgData.messages) ? msgData.messages : []);
+    } finally {
+      setLoadingConv(false);
+    }
+  }
+
+  async function selectExistingConv(conv: Conv) {
+    setShowNewChat(false);
+    setLoadingConv(true);
+    try {
+      const res = await fetch(`/api/conversations/${conv.id}/messages`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = res.ok ? await res.json() : { messages: [] };
+      setSelectedConv({ id: conv.id, otherUser: conv.otherUser });
+      setMessages(Array.isArray(data.messages) ? data.messages : []);
+    } finally {
+      setLoadingConv(false);
+    }
+  }
+
+  async function handleSend(e: React.FormEvent) {
+    e.preventDefault();
+    const text = input.trim();
+    if (!text || !selectedConv || !token) return;
+    const tempId = "temp-" + Date.now();
+    setInput("");
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: tempId,
+        content: text,
+        createdAt: new Date().toISOString(),
+        sender: { id: user!.id, name: user!.name, avatarUrl: user!.avatarUrl },
+        isMe: true,
+      },
+    ]);
+    fetchConversations();
+    try {
+      const res = await fetch(`/api/conversations/${selectedConv.id}/messages`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ content: text }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const msg = data.message;
+        if (msg) {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === tempId
+                ? {
+                    id: msg.id,
+                    content: msg.content,
+                    createdAt: msg.createdAt,
+                    sender: msg.sender ?? { id: user!.id, name: user!.name, avatarUrl: user!.avatarUrl },
+                    isMe: true,
+                  }
+                : m
+            )
+          );
+        }
+        sendBroadcast(selectedConv.id, msg);
+      } else {
+        setMessages((prev) => prev.filter((m) => m.id !== tempId));
+      }
+    } catch {
+      setMessages((prev) => prev.filter((m) => m.id !== tempId));
+    }
+  }
+
+  async function handleSendAI(e: React.FormEvent) {
+    e.preventDefault();
+    const text = input.trim();
+    if (!text || !selectedConv || selectedConv.otherUser.id !== "__ai__" || !token) return;
+    const userMsgId = "ai-user-" + Date.now();
+    const aiMsgId = "ai-reply-" + Date.now();
+    setInput("");
+    const userMsg: Msg = {
+      id: userMsgId,
+      content: text,
+      createdAt: new Date().toISOString(),
+      sender: { id: user!.id, name: user!.name, avatarUrl: user!.avatarUrl },
+      isMe: true,
+    };
+    const placeholderMsg: Msg = {
+      id: aiMsgId,
+      content: "...",
+      createdAt: new Date().toISOString(),
+      sender: { id: "__ai__", name: "Chat with AI", avatarUrl: null },
+      isMe: false,
+    };
+    setMessages((prev) => [...prev, userMsg, placeholderMsg]);
+    try {
+      const history = messages
+        .filter((m) => m.sender.id === "__ai__" || m.isMe)
+        .slice(-20)
+        .map((m) => ({
+          role: m.isMe ? ("user" as const) : ("assistant" as const),
+          content: m.content,
+        }));
+      const res = await fetch("/api/chat/ai", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ message: text, history }),
+      });
+      const data = await res.json();
+      const reply = res.ok && data.reply ? data.reply : data.error || "Something went wrong.";
+      setMessages((prev) =>
+        prev.map((m) => (m.id === aiMsgId ? { ...m, content: reply } : m))
+      );
+    } catch {
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === aiMsgId ? { ...m, content: "Could not reach the AI. Try again." } : m
+        )
+      );
+    }
+  }
+
+  const formatTime = (iso: string) => {
+    const d = new Date(iso);
+    const now = new Date();
+    const timeStr = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    if (d.toDateString() === now.toDateString()) {
+      return "Today at " + timeStr;
+    }
+    return d.toLocaleDateString([], { month: "short", day: "numeric" }) + " at " + timeStr;
+  };
+
+  return (
+    <div className="h-screen flex flex-col bg-[var(--bg)] text-[var(--text)]">
+      {/* Top bar - Figma: light grey, "Message" left, search ⌘+K, bell, settings, profile */}
+      <header className="shrink-0 flex items-center gap-3 px-4 py-3 bg-slate-200/60 border-b border-[var(--border)]">
+        <span className="font-semibold text-slate-800">Message</span>
+        <div className="flex-1 flex justify-end items-center gap-2">
+          <button type="button" className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/80 text-slate-500 text-sm hover:bg-white transition max-w-[200px]">
+            <SearchIcon size={18} />
+            <span className="hidden sm:inline">Search</span>
+            <kbd className="text-xs text-slate-400">⌘+K</kbd>
+          </button>
+          <button type="button" className="p-2 rounded-lg text-slate-500 hover:bg-white/80 transition" title="Notifications">
+            <BellIcon size={20} />
+          </button>
+          <Link href="/chat/settings" className="p-2 rounded-lg text-slate-500 hover:bg-white/80 transition" title="Settings">
+            <SettingsIcon size={20} />
+          </Link>
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setProfileOpen((v) => !v)}
+              className="flex items-center gap-1 p-1 rounded-full bg-white/80 hover:bg-white cursor-pointer"
+              title="Profile"
+            >
+              <Avatar name={user?.name ?? ""} src={user?.avatarUrl} size="sm" />
+              <span className="w-2 h-2 rounded-full bg-green-500" aria-hidden />
+            </button>
+            {profileOpen && (
+              <>
+                <div className="fixed inset-0 z-40" aria-hidden onClick={() => setProfileOpen(false)} />
+                <div className="absolute right-0 top-full mt-1 py-1 w-48 bg-white rounded-lg shadow-lg border border-[var(--border)] z-50">
+                  <p className="px-3 py-2 text-sm font-medium text-slate-800 truncate border-b border-[var(--border)]">{user?.name}</p>
+                  <button type="button" onClick={() => { setProfileOpen(false); logout(); }} className="w-full px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 text-left">
+                    Log out
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </header>
+
+      <div className="flex-1 flex min-h-0">
+        {/* Narrow icon nav - Figma: circular logo, icons, user at bottom */}
+        <aside className="w-16 flex flex-col items-center py-3 border-r border-[var(--border)] bg-slate-50 shrink-0">
+          <div className="w-10 h-10 rounded-full bg-brand-600 shrink-0 mb-6" aria-hidden />
+          <nav className="flex flex-col items-center gap-1">
+            <Link href="/" className="p-2.5 rounded-full text-slate-500 hover:bg-slate-200 transition" title="Home">
+              <HomeIcon size={22} />
+            </Link>
+            <div className="p-2.5 rounded-full bg-brand-500 text-white" title="Messages (active)">
+              <ChatBubbleIcon size={22} className="text-white" />
+            </div>
+            <button type="button" className="p-2.5 rounded-full text-slate-500 hover:bg-slate-200 transition" title="Files">
+              <DocumentIcon size={22} />
+            </button>
+            <button type="button" onClick={() => setShowNewChat(true)} className="p-2.5 rounded-full text-slate-500 hover:bg-slate-200 transition" title="Contacts">
+              <AddressBookIcon size={22} />
+            </button>
+            <button type="button" className="p-2.5 rounded-full text-slate-500 hover:bg-slate-200 transition" title="Calendar">
+              <CalendarIcon size={22} />
+            </button>
+            <Link href="/chat/settings" className="p-2.5 rounded-full text-slate-500 hover:bg-slate-200 transition" title="Settings">
+              <SettingsIcon size={22} />
+            </Link>
+          </nav>
+          <div className="mt-auto pt-4">
+            <Avatar name={user?.name ?? ""} src={user?.avatarUrl} size="sm" />
+          </div>
+        </aside>
+
+        {/* Chat list panel - "All Message" */}
+        <aside className="w-72 flex flex-col border-r border-[var(--border)] bg-slate-50 shrink-0">
+          <div className="p-3 border-b border-[var(--border)]">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="font-bold text-slate-800">All Message</h2>
+              <button
+                type="button"
+                onClick={() => setShowNewChat(true)}
+                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-brand-500 hover:bg-brand-600 text-white text-sm font-medium transition"
+              >
+                <ChatBubbleIcon size={18} className="text-white" />
+                New Message
+              </button>
+            </div>
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white border border-[var(--border)] text-slate-500 text-sm">
+              <SearchIcon size={18} />
+              <span className="flex-1 text-left">Search in message</span>
+              <FilterIcon size={18} />
+            </div>
+          </div>
+          <div className="flex-1 overflow-y-auto min-h-0 relative">
+            {loadingUsers ? (
+              <div className="px-4 py-6 text-center text-slate-500 text-sm">Loading...</div>
+            ) : (
+              <>
+                {conversations.map((c) => (
+                  <div
+                    key={c.id}
+                    className={`relative flex items-start gap-3 px-4 py-3 cursor-pointer transition text-left ${
+                      selectedConv?.id === c.id && !showNewChat ? "bg-brand-50 border-l-2 border-brand-500" : "hover:bg-slate-100 border-l-2 border-transparent"
+                    }`}
+                    onClick={() => selectExistingConv(c)}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      setContextMenu({ convId: c.id, x: e.clientX, y: e.clientY });
+                    }}
+                  >
+                    <div className="relative shrink-0 mt-0.5">
+                      <Avatar name={c.otherUser.name} src={c.otherUser.avatarUrl} size="md" />
+                      {onlineUserIds.has(c.otherUser.id) && (
+                        <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-green-500 border-2 border-white" />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-slate-800 truncate">{c.otherUser.name}</p>
+                      <p className="text-xs text-slate-500 truncate">{c.lastMessage?.content ?? "No messages"}</p>
+                    </div>
+                    <div className="shrink-0 flex flex-col items-end gap-0.5">
+                      <span className="text-xs text-slate-500">{c.lastMessage?.createdAt ? relativeTime(c.lastMessage.createdAt) : ""}</span>
+                      {c.lastMessage?.senderId === userIdRef.current && (
+                        <span className="text-slate-400" title="Read">
+                          <CheckDoubleIcon size={14} />
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowNewChat(false);
+                    setSelectedConv({
+                      id: "__ai__",
+                      otherUser: { id: "__ai__", email: "", name: "Chat with AI", avatarUrl: null },
+                    });
+                    setMessages([]);
+                  }}
+                  className={`w-full flex items-center gap-3 px-4 py-3 transition text-left ${
+                    isChatWithAI ? "bg-brand-50 border-l-2 border-brand-500" : "hover:bg-slate-100 border-l-2 border-transparent"
+                  }`}
+                >
+                  <div className="shrink-0 w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center text-brand-500">
+                    <RobotIcon size={22} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-slate-800">Chat with AI</p>
+                    <p className="text-xs text-slate-500">Ask anything</p>
+                  </div>
+                </button>
+                {conversations.length === 0 && !loadingUsers && (
+                  <div className="px-4 py-4 text-center text-slate-500 text-sm">No chats yet. Start a new chat or try AI.</div>
+                )}
+              </>
+            )}
+          </div>
+        </aside>
+
+        {/* Context menu - Mark unread, Archive, Mute, Contact info, Export, Clear, Delete */}
+        {contextMenu && (
+          <>
+            <div className="fixed inset-0 z-40" aria-hidden onClick={() => setContextMenu(null)} />
+            <div
+              className="fixed z-50 bg-white rounded-lg shadow-lg border border-[var(--border)] py-1 min-w-[180px]"
+              style={{ left: contextMenu.x, top: contextMenu.y }}
+            >
+              <button type="button" className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 text-left">
+                <span aria-hidden>📖</span> Mark as unread
+              </button>
+              <button type="button" className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 text-left">
+                <span aria-hidden>📦</span> Archive
+              </button>
+              <button type="button" className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 text-left">
+                <span aria-hidden>🔇</span> Mute
+              </button>
+              <button type="button" className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 text-left">
+                <span aria-hidden>👤</span> Contact info
+              </button>
+              <button type="button" className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 text-left">
+                <span aria-hidden>↗</span> Export chat
+              </button>
+              <button type="button" className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 text-left">
+                <span aria-hidden>✕</span> Clear chat
+              </button>
+              <button type="button" className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 text-left font-medium" onClick={() => setContextMenu(null)}>
+                <span aria-hidden>🗑</span> Delete chat
+              </button>
+            </div>
+          </>
+        )}
+
+      {/* Main content */}
+      <main className="flex-1 flex flex-col min-w-0 bg-[var(--bg)]">
+        {showNewChat ? (
+          /* New Chat: pick a friend */
+          <div className="flex-1 flex flex-col p-6">
+            <h2 className="text-lg font-semibold text-slate-800 mb-4">Start a new chat</h2>
+            {users.length === 0 ? (
+              <p className="text-slate-500 text-sm">No other users yet. Share the app so others can sign up.</p>
+            ) : (
+              <div className="grid gap-2">
+                {users.map((u) => (
+                  <button
+                    key={u.id}
+                    onClick={() => openConversation(u)}
+                    disabled={loadingConv}
+                    className="flex items-center gap-3 p-3 rounded-lg hover:bg-white border border-[var(--border)] text-left transition"
+                  >
+                    <div className="relative">
+                      <Avatar name={u.name} src={u.avatarUrl} size="md" />
+                      {onlineUserIds.has(u.id) && (
+                        <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-green-500 border-2 border-white" />
+                      )}
+                    </div>
+                    <div>
+                      <p className="font-medium text-slate-800">{u.name}</p>
+                      <p className="text-xs text-slate-500">{u.email}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : selectedConv ? (
+          /* Active conversation */
+          <>
+            {/* Chat header - Figma: avatar, name (Online in green), search, phone, video, three-dot */}
+            <div className="px-4 py-3 bg-white border-b border-[var(--border)] flex items-center gap-3">
+              <Avatar name={selectedConv.otherUser.name} src={selectedConv.otherUser.avatarUrl} size="md" />
+              <div className="flex-1 min-w-0">
+                <p className="font-medium text-slate-800">{selectedConv.otherUser.name}</p>
+                <p className={`text-xs ${!isChatWithAI && onlineUserIds.has(selectedConv.otherUser.id) ? "text-green-600" : "text-slate-500"}`}>
+                  {isChatWithAI ? "AI Assistant" : onlineUserIds.has(selectedConv.otherUser.id) ? "Online" : "Offline"}
+                </p>
+              </div>
+              <button type="button" className="p-2 rounded-lg text-slate-500 hover:bg-slate-100 transition" title="Search">
+                <SearchIcon size={20} />
+              </button>
+              {!isChatWithAI && (
+                <>
+                  <button type="button" className="p-2 rounded-lg text-slate-500 hover:bg-slate-100 transition" title="Voice call">
+                    <PhoneIcon size={20} />
+                  </button>
+                  <button type="button" className="p-2 rounded-lg text-slate-500 hover:bg-slate-100 transition" title="Video call">
+                    <VideoCallIcon size={20} />
+                  </button>
+                </>
+              )}
+              <button
+                type="button"
+                onClick={() => setShowRightPanel((v) => !v)}
+                className="p-2 rounded-lg text-slate-500 hover:bg-slate-100 transition"
+                title="More options"
+              >
+                <DotsThreeIcon size={20} />
+              </button>
+            </div>
+
+            {/* Messages - Figma: "Today" separator, light grey body, outgoing = light green + timestamp + double checkmark */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-[var(--message-body)]">
+              {messages.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full text-slate-500 text-sm py-8">
+                  <p>No messages yet.</p>
+                  <p className="mt-1">Say hi to get the conversation started.</p>
+                </div>
+              ) : (
+                <>
+                  <div className="flex justify-center py-2">
+                    <span className="text-xs font-medium text-slate-500 bg-white/80 px-3 py-1 rounded-full">Today</span>
+                  </div>
+                  {messages.map((m) => (
+                    <div key={m.id} className={`flex ${m.isMe ? "justify-end" : "justify-start"}`}>
+                      <div className={`flex items-end gap-2 max-w-[75%] ${m.isMe ? "flex-row-reverse" : ""}`}>
+                        {!m.isMe && (
+                          m.sender.id === "__ai__" ? (
+                            <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-brand-500 shrink-0">
+                              <RobotIcon size={18} />
+                            </div>
+                          ) : (
+                            <Avatar name={m.sender.name} src={m.sender.avatarUrl} size="sm" />
+                          )
+                        )}
+                        <div
+                          className={`rounded-2xl px-4 py-2 ${
+                            m.isMe
+                              ? "bg-[var(--bubble-me)] text-white rounded-br-md"
+                              : "bg-[var(--bubble-other)] text-slate-800 rounded-bl-md"
+                          }`}
+                        >
+                          <p className="text-sm">{m.content}</p>
+                          <div className={`flex items-center gap-1 mt-0.5 justify-end ${m.isMe ? "text-brand-100" : "text-slate-500"}`}>
+                            <span className="text-xs">{formatTime(m.createdAt).replace("Today at ", "")}</span>
+                            {m.isMe && (
+                              <span className="text-white/90" title="Read">
+                                <CheckDoubleIcon size={12} />
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </>
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+
+            {/* Input - Figma: mic, paperclip, emoji, "Type any message...", circular green send */}
+            <form onSubmit={isChatWithAI ? handleSendAI : handleSend} className="p-4 bg-white border-t border-[var(--border)]">
+              <div className="flex items-center gap-2">
+                <button type="button" className="p-2 rounded-lg text-slate-500 hover:bg-slate-100 transition" title="Voice message">
+                  <MicrophoneIcon size={20} />
+                </button>
+                <button type="button" className="p-2 rounded-lg text-slate-500 hover:bg-slate-100 transition" title="Attach file">
+                  <PaperclipIcon size={20} />
+                </button>
+                <button type="button" className="p-2 rounded-lg text-slate-500 hover:bg-slate-100 transition" title="Emoji">
+                  <EmojiIcon size={20} />
+                </button>
+                <input
+                  type="text"
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  placeholder="Type any message..."
+                  className="flex-1 px-4 py-3 rounded-xl bg-slate-100 border border-transparent text-slate-800 placeholder-slate-500 focus:bg-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none transition"
+                />
+                <button
+                  type="submit"
+                  disabled={!input.trim()}
+                  className="w-11 h-11 rounded-full bg-brand-500 hover:bg-brand-600 text-white flex items-center justify-center transition disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+                  title="Send"
+                >
+                  <PaperPlaneIcon size={20} className="text-white" />
+                </button>
+              </div>
+            </form>
+          </>
+        ) : (
+          <div className="flex-1 flex flex-col items-center justify-center text-slate-500 px-4">
+            <div className="w-16 h-16 rounded-full bg-slate-200 flex items-center justify-center text-3xl text-slate-400 mb-4">
+              <ChatBubbleIcon size={32} className="text-slate-400" />
+            </div>
+            <p className="text-sm font-medium text-slate-600">Select a conversation</p>
+            <p className="text-xs mt-1 text-slate-500">Choose a chat from the list or start a new one</p>
+            <button
+              onClick={() => setShowNewChat(true)}
+              className="mt-4 px-4 py-2 rounded-lg bg-brand-500 text-white text-sm font-medium hover:bg-brand-600 transition"
+            >
+              New Chat
+            </button>
+          </div>
+        )}
+      </main>
+
+      {/* Right sidebar - Figma: (1) Files & Media (2) Conversation settings */}
+      {showRightPanel && selectedConv && (
+        <aside className="w-72 shrink-0 border-l border-[var(--border)] bg-white flex flex-col">
+          <div className="p-4 border-b border-[var(--border)]">
+            <div className="flex items-center gap-3 mb-3">
+              <Avatar name={selectedConv.otherUser.name} src={selectedConv.otherUser.avatarUrl} size="md" />
+              <p className="font-medium text-slate-800 truncate">{selectedConv.otherUser.name}</p>
+            </div>
+            <div className="flex rounded-lg bg-slate-100 p-0.5">
+              <button
+                type="button"
+                onClick={() => setRightPanelTab("files")}
+                className={`flex-1 py-2 rounded-md text-xs font-medium transition ${
+                  rightPanelTab === "files" ? "bg-white text-slate-800 shadow-sm" : "text-slate-600"
+                }`}
+              >
+                Files & Media
+              </button>
+              <button
+                type="button"
+                onClick={() => setRightPanelTab("settings")}
+                className={`flex-1 py-2 rounded-md text-xs font-medium transition ${
+                  rightPanelTab === "settings" ? "bg-white text-slate-800 shadow-sm" : "text-slate-600"
+                }`}
+              >
+                Settings
+              </button>
+            </div>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4">
+            {rightPanelTab === "files" ? (
+              /* Figma: Files, Media (grid), Links */
+              <div className="space-y-5">
+                <section>
+                  <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-2">Files</p>
+                  <p className="text-sm text-slate-500">No files shared</p>
+                </section>
+                <section>
+                  <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-2">Media</p>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[1, 2, 3, 4, 5, 6].map((i) => (
+                      <div key={i} className="aspect-square rounded-lg bg-slate-200 flex items-center justify-center text-slate-400 text-xs" aria-hidden>
+                        thumb
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-sm text-slate-500 mt-2">No media in this chat yet</p>
+                </section>
+                <section>
+                  <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-2">Links</p>
+                  <p className="text-sm text-slate-500">No links shared</p>
+                </section>
+              </div>
+            ) : (
+              /* Figma: Overview, Notifications, Privacy, Report, Block, Delete */
+              !isChatWithAI && (
+                <div className="space-y-4">
+                  <section>
+                    <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-2">Overview</p>
+                    <p className="text-sm text-slate-600">Conversation with {selectedConv.otherUser.name}</p>
+                  </section>
+                  <section className="pt-2 border-t border-[var(--border)]">
+                    <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-3">Conversation</p>
+                    <div className="space-y-3 text-sm">
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-700">Notifications</span>
+                        <button type="button" className="w-10 h-6 rounded-full bg-slate-200 relative" aria-label="Toggle notifications">
+                          <span className="absolute left-0.5 top-0.5 w-5 h-5 rounded-full bg-white shadow transition" />
+                        </button>
+                      </div>
+                      <button type="button" className="block w-full text-left text-slate-700 hover:text-slate-900 py-1">Privacy</button>
+                      <button type="button" className="block w-full text-left text-slate-700 hover:text-slate-900 py-1">Report</button>
+                      <button type="button" className="block w-full text-left text-slate-700 hover:text-slate-900 py-1">Block</button>
+                      <button type="button" className="block w-full text-left text-red-600 hover:text-red-700 py-1 font-medium">Delete conversation</button>
+                    </div>
+                  </section>
+                </div>
+              )
+            )}
+            {rightPanelTab === "settings" && isChatWithAI && (
+              <p className="text-sm text-slate-500">No settings for Chat with AI.</p>
+            )}
+          </div>
+        </aside>
+      )}
+      </div>
+    </div>
+  );
+}
