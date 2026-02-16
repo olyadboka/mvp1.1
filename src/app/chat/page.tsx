@@ -27,6 +27,8 @@ import {
   DocumentIcon,
   AddressBookIcon,
   CalendarIcon,
+  CloseIcon,
+  LinkIcon,
 } from "@/components/Icons";
 
 type User = { id: string; email: string; name: string; avatarUrl: string | null };
@@ -54,7 +56,7 @@ export default function ChatPage() {
   const [loadingUsers, setLoadingUsers] = useState(true);
   const [showNewChat, setShowNewChat] = useState(false);
   const [showRightPanel, setShowRightPanel] = useState(false);
-  const [rightPanelTab, setRightPanelTab] = useState<"files" | "settings">("files");
+  const [rightPanelTab, setRightPanelTab] = useState<"media" | "link" | "docs">("docs");
   const [activeTab, setActiveTab] = useState<"messages" | "teams">("messages");
   const [contextMenu, setContextMenu] = useState<{ convId: string; x: number; y: number } | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -544,7 +546,15 @@ export default function ChatPage() {
               <button type="button" className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 text-left">
                 <span aria-hidden>🔇</span> Mute
               </button>
-              <button type="button" className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 text-left">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowRightPanel(true);
+                  setRightPanelTab("docs");
+                  setContextMenu(null);
+                }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 text-left"
+              >
                 <span aria-hidden>👤</span> Contact info
               </button>
               <button type="button" className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 text-left">
@@ -723,89 +733,141 @@ export default function ChatPage() {
         )}
       </main>
 
-      {/* Right sidebar - Figma: (1) Files & Media (2) Conversation settings */}
+      {/* Right sidebar - Contact Info: avatar, name, email, Audio/Video, Media/Link/Docs */}
       {showRightPanel && selectedConv && (
-        <aside className="w-72 shrink-0 border-l border-[var(--border)] bg-white flex flex-col">
-          <div className="p-4 border-b border-[var(--border)]">
-            <div className="flex items-center gap-3 mb-3">
-              <Avatar name={selectedConv.otherUser.name} src={selectedConv.otherUser.avatarUrl} size="md" />
-              <p className="font-medium text-slate-800 truncate">{selectedConv.otherUser.name}</p>
-            </div>
-            <div className="flex rounded-lg bg-slate-100 p-0.5">
+        <aside className="w-80 shrink-0 border-l border-[var(--border)] bg-white flex flex-col">
+          <div className="shrink-0 p-4 border-b border-[var(--border)]">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-semibold text-slate-800">Contact Info</h2>
               <button
                 type="button"
-                onClick={() => setRightPanelTab("files")}
-                className={`flex-1 py-2 rounded-md text-xs font-medium transition ${
-                  rightPanelTab === "files" ? "bg-white text-slate-800 shadow-sm" : "text-slate-600"
-                }`}
+                onClick={() => setShowRightPanel(false)}
+                className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 transition"
+                aria-label="Close"
               >
-                Files & Media
-              </button>
-              <button
-                type="button"
-                onClick={() => setRightPanelTab("settings")}
-                className={`flex-1 py-2 rounded-md text-xs font-medium transition ${
-                  rightPanelTab === "settings" ? "bg-white text-slate-800 shadow-sm" : "text-slate-600"
-                }`}
-              >
-                Settings
+                <CloseIcon size={20} />
               </button>
             </div>
-          </div>
-          <div className="flex-1 overflow-y-auto p-4">
-            {rightPanelTab === "files" ? (
-              /* Figma: Files, Media (grid), Links */
-              <div className="space-y-5">
-                <section>
-                  <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-2">Files</p>
-                  <p className="text-sm text-slate-500">No files shared</p>
-                </section>
-                <section>
-                  <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-2">Media</p>
-                  <div className="grid grid-cols-3 gap-2">
-                    {[1, 2, 3, 4, 5, 6].map((i) => (
-                      <div key={i} className="aspect-square rounded-lg bg-slate-200 flex items-center justify-center text-slate-400 text-xs" aria-hidden>
-                        thumb
-                      </div>
-                    ))}
-                  </div>
-                  <p className="text-sm text-slate-500 mt-2">No media in this chat yet</p>
-                </section>
-                <section>
-                  <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-2">Links</p>
-                  <p className="text-sm text-slate-500">No links shared</p>
-                </section>
+            {isChatWithAI ? (
+              <div className="flex flex-col items-center py-4 text-center">
+                <div className="w-20 h-20 rounded-full bg-slate-200 flex items-center justify-center text-brand-500 mb-3">
+                  <RobotIcon size={40} />
+                </div>
+                <p className="font-medium text-slate-800">Chat with AI</p>
+                <p className="text-sm text-slate-500 mt-0.5">No contact info for AI.</p>
               </div>
             ) : (
-              /* Figma: Overview, Notifications, Privacy, Report, Block, Delete */
-              !isChatWithAI && (
-                <div className="space-y-4">
-                  <section>
-                    <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-2">Overview</p>
-                    <p className="text-sm text-slate-600">Conversation with {selectedConv.otherUser.name}</p>
-                  </section>
-                  <section className="pt-2 border-t border-[var(--border)]">
-                    <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-3">Conversation</p>
-                    <div className="space-y-3 text-sm">
-                      <div className="flex items-center justify-between">
-                        <span className="text-slate-700">Notifications</span>
-                        <button type="button" className="w-10 h-6 rounded-full bg-slate-200 relative" aria-label="Toggle notifications">
-                          <span className="absolute left-0.5 top-0.5 w-5 h-5 rounded-full bg-white shadow transition" />
-                        </button>
-                      </div>
-                      <button type="button" className="block w-full text-left text-slate-700 hover:text-slate-900 py-1">Privacy</button>
-                      <button type="button" className="block w-full text-left text-slate-700 hover:text-slate-900 py-1">Report</button>
-                      <button type="button" className="block w-full text-left text-slate-700 hover:text-slate-900 py-1">Block</button>
-                      <button type="button" className="block w-full text-left text-red-600 hover:text-red-700 py-1 font-medium">Delete conversation</button>
-                    </div>
-                  </section>
+              <>
+                <div className="flex flex-col items-center pb-4">
+                  <Avatar name={selectedConv.otherUser.name} src={selectedConv.otherUser.avatarUrl} size="xl" />
+                  <p className="font-medium text-slate-800 mt-3">{selectedConv.otherUser.name}</p>
+                  <p className="text-sm text-slate-500 truncate max-w-full">{selectedConv.otherUser.email || "No email"}</p>
                 </div>
-              )
-            )}
-            {rightPanelTab === "settings" && isChatWithAI && (
-              <p className="text-sm text-slate-500">No settings for Chat with AI.</p>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 transition text-sm font-medium"
+                  >
+                    <PhoneIcon size={18} />
+                    Audio
+                  </button>
+                  <button
+                    type="button"
+                    className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 transition text-sm font-medium"
+                  >
+                    <VideoCallIcon size={18} />
+                    Video
+                  </button>
+                </div>
+              </>
             )}
           </div>
+          {!isChatWithAI && (
+            <>
+              <div className="flex rounded-lg bg-slate-100 p-0.5 mx-4 mt-2">
+                <button
+                  type="button"
+                  onClick={() => setRightPanelTab("media")}
+                  className={`flex-1 py-2 rounded-md text-xs font-medium transition ${
+                    rightPanelTab === "media" ? "bg-white text-slate-800 shadow-sm" : "text-slate-600"
+                  }`}
+                >
+                  Media
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRightPanelTab("link")}
+                  className={`flex-1 py-2 rounded-md text-xs font-medium transition ${
+                    rightPanelTab === "link" ? "bg-white text-slate-800 shadow-sm" : "text-slate-600"
+                  }`}
+                >
+                  Link
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRightPanelTab("docs")}
+                  className={`flex-1 py-2 rounded-md text-xs font-medium transition ${
+                    rightPanelTab === "docs" ? "bg-white text-slate-800 shadow-sm" : "text-slate-600"
+                  }`}
+                >
+                  Docs
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-4">
+                {rightPanelTab === "media" && (
+                  <div className="space-y-3">
+                    <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Media</p>
+                    <div className="grid grid-cols-3 gap-2">
+                      {[1, 2, 3, 4, 5, 6].map((i) => (
+                        <div key={i} className="aspect-square rounded-lg bg-slate-200 flex items-center justify-center text-slate-400 text-xs" aria-hidden>
+                          thumb
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-sm text-slate-500">No media in this chat yet</p>
+                  </div>
+                )}
+                {rightPanelTab === "link" && (
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Link</p>
+                    <p className="text-sm text-slate-500">No links shared</p>
+                  </div>
+                )}
+                {rightPanelTab === "docs" && (
+                  <div className="space-y-4">
+                    <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Docs</p>
+                    <section>
+                      <p className="text-xs font-medium text-slate-500 mb-2">May</p>
+                      <ul className="space-y-3">
+                        {[
+                          { name: "Document Requirement.pdf", detail: "10 pages • 16 MB", ext: "pdf", icon: "red" },
+                          { name: "User Flow.pdf", detail: "7 pages • 32 MB", ext: "pdf", icon: "red" },
+                          { name: "Existing App.fig", detail: "213 MB", ext: "fig", icon: "purple" },
+                          { name: "Product Illustrations.ai", detail: "72 MB", ext: "ai", icon: "orange" },
+                          { name: "Quotation-Hikariworks-May.pdf", detail: "2 pages • 329 KB", ext: "pdf", icon: "red" },
+                        ].map((f, i) => (
+                          <li key={i} className="flex items-start gap-3 group">
+                            <div
+                              className={`w-9 h-9 rounded-lg shrink-0 flex items-center justify-center text-white text-xs font-medium ${
+                                f.icon === "red" ? "bg-red-500" : f.icon === "purple" ? "bg-purple-500" : "bg-amber-500"
+                              }`}
+                            >
+                              {f.ext.toUpperCase()}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-slate-800 truncate">{f.name}</p>
+                              <p className="text-xs text-slate-500">{f.detail}</p>
+                            </div>
+                            <span className="text-xs text-slate-400 shrink-0">{f.ext}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </section>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
         </aside>
       )}
       </div>

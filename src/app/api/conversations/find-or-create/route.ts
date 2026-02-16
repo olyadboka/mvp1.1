@@ -16,13 +16,14 @@ export async function POST(request: Request) {
 
   const [idA, idB] = [me.id, otherUserId].sort();
 
+  const userSelect = { id: true, name: true, avatarUrl: true, email: true };
   let conv = await prisma.conversation.findUnique({
     where: {
       userAId_userBId: { userAId: idA, userBId: idB },
     },
     include: {
-      userA: { select: { id: true, name: true, avatarUrl: true } },
-      userB: { select: { id: true, name: true, avatarUrl: true } },
+      userA: { select: userSelect },
+      userB: { select: userSelect },
     },
   });
 
@@ -30,8 +31,8 @@ export async function POST(request: Request) {
     conv = await prisma.conversation.create({
       data: { userAId: idA, userBId: idB },
       include: {
-        userA: { select: { id: true, name: true, avatarUrl: true } },
-        userB: { select: { id: true, name: true, avatarUrl: true } },
+        userA: { select: userSelect },
+        userB: { select: userSelect },
       },
     });
   }

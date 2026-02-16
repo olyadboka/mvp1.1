@@ -1,11 +1,11 @@
 type Props = {
   name: string;
   src?: string | null;
-  size?: "sm" | "md" | "lg";
+  size?: "sm" | "md" | "lg" | "xl";
   className?: string;
 };
 
-const sizeClasses = { sm: "w-8 h-8 text-xs", md: "w-10 h-10 text-sm", lg: "w-12 h-12 text-base" };
+const sizeClasses = { sm: "w-8 h-8 text-xs", md: "w-10 h-10 text-sm", lg: "w-12 h-12 text-base", xl: "w-20 h-20 text-xl" };
 
 // Placeholder image for users without a picture (e.g. JWT users). Google users use avatarUrl.
 const placeholderUrl = (displayName: string) =>
