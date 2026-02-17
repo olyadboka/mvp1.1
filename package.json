@@ -9,6 +9,7 @@
     "lint": "next lint",
     "postinstall": "node node_modules/prisma/build/index.js generate && patch-package",
     "db:push": "node node_modules/prisma/build/index.js db push",
+    "db:push:local": "node scripts/db-push-local.js",
     "setup": "node node_modules/prisma/build/index.js generate && node node_modules/prisma/build/index.js db push"
   },
   "dependencies": {
