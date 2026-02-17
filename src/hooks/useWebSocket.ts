@@ -45,7 +45,16 @@ export function useWebSocket(
   }, []);
 
   const sendBroadcast = useCallback(
-    (conversationId: string, message: { id: string; senderId?: string; content: string; createdAt: string; sender: { id: string; name: string; avatarUrl: string | null } }) => {
+    (
+      conversationId: string,
+      message: {
+        id: string;
+        senderId?: string;
+        content: string;
+        createdAt: string;
+        sender: { id: string; name: string; avatarUrl: string | null };
+      },
+    ) => {
       const ws = wsRef.current;
       if (ws?.readyState === WebSocket.OPEN) {
         ws.send(
@@ -59,13 +68,14 @@ export function useWebSocket(
               createdAt: message.createdAt,
               sender: message.sender,
             },
-          })
+          }),
         );
       }
     },
-    []
+    [],
   );
 
+  //
   useEffect(() => {
     if (!token) {
       setConnected(false);
