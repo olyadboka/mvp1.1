@@ -3,18 +3,49 @@
 @tailwind utilities;
 
 :root {
-  --bg: #f8fafc;
+  /* Design tokens – spacing, borders, radii */
+  --bg: #ffffff;
   --surface: #ffffff;
-  --border: #e2e8f0;
+  --border: #e0e0e0;
   --text: #0f172a;
   --muted: #64748b;
-  --accent: #14b8a6;
-  --accent-hover: #0d9488;
-  /* Figma: other user = light gray, me = teal/green */
-  --bubble-other: #e5e7eb;
-  --bubble-me: #14b8a6;
-  /* Message area body - subtle light gray per Figma */
-  --message-body: #f4f4f5;
+
+  /* Primary teal/green */
+  --accent: #34a887;
+  --accent-hover: #2d9575;
+  --accent-light: #e0f5ee;
+
+  /* Chat bubbles – design spec */
+  --bubble-other: #eeeeee;
+  --bubble-me: #e0f5ee;
+
+  /* Backgrounds – white containers, light grey gaps */
+  --app-outer: #424242;
+  --content-bg: #ffffff;
+  --sidebar-bg: #f7f6f3;
+  --message-body: #ffffff;
+  --gap-bg: #f5f5f4;
+  --separator: #f0f0ef;
+  --separator-light: #f0f0ef;
+
+  /* Radii – small, uniform (6px) for all containers */
+  --radius-app: 6px;
+  --radius-sm: 6px;
+  --radius-md: 6px;
+  --radius-lg: 6px;
+  --radius-pill: 9999px;
+  --radius-btn: 6px;
+
+  /* Spacing */
+  --space-header: 20px;
+  --space-panel: 20px;
+  --space-list-item: 10px;
+  --space-bubble: 12px;
+  --space-input: 20px;
+
+  /* Shadows */
+  --shadow-card: 0 4px 20px rgba(0, 0, 0, 0.08);
+  --shadow-panel: 0 8px 32px rgba(0, 0, 0, 0.12);
 }
 
 body {

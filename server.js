@@ -81,6 +81,9 @@ app.prepare().then(() => {
               onlineUsers.set(decoded.userId, new Set());
             onlineUsers.get(decoded.userId).add(ws);
             ws.send(JSON.stringify({ type: "auth", ok: true }));
+            // Send current online list to this client so status works immediately
+            const userIds = Array.from(onlineUsers.keys());
+            ws.send(JSON.stringify({ type: "online", userIds }));
             broadcastOnlineList();
           });
           return;
