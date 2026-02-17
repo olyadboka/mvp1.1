@@ -1,6 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Use Babel instead of SWC when SWC binary is locked (e.g. by another process on Windows)
-  swcMinify: false,
+  experimental: {
+    serverComponentsExternalPackages: ["@prisma/client", "prisma"],
+  },
 };
 module.exports = nextConfig;
