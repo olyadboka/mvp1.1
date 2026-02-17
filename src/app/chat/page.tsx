@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
 import { useAuth } from "@/components/AuthProvider";
 import { useWebSocket } from "@/hooks/useWebSocket";
+import { apiUrl } from "@/lib/api";
 import { Avatar } from "@/components/Avatar";
 import {
   ChatBubbleIcon,
@@ -85,14 +86,14 @@ export default function ChatPage() {
   const fetchUsers = useCallback(async () => {
     if (!token) return;
     setLoadingUsers(true);
-    const res = await fetch("/api/users", { headers: { Authorization: `Bearer ${token}` } });
+    const res = await fetch(apiUrl("/api/users"), { headers: { Authorization: `Bearer ${token}` } });
     if (res.ok) setUsers(await res.json());
     setLoadingUsers(false);
   }, [token]);
 
   const fetchConversations = useCallback(async () => {
     if (!token) return;
-    const res = await fetch("/api/conversations", { headers: { Authorization: `Bearer ${token}` } });
+    const res = await fetch(apiUrl("/api/conversations"), { headers: { Authorization: `Bearer ${token}` } });
     if (res.ok) setConversations(await res.json());
   }, [token]);
 
@@ -149,7 +150,7 @@ export default function ChatPage() {
       setTimeout(() => {
         const t = tokenRefForFetch.current;
         if (!t) return;
-        fetch(`/api/conversations/${cid}/messages`, {
+        fetch(apiUrl(`/api/conversations/${cid}/messages`), {
           headers: { Authorization: `Bearer ${t}` },
         })
           .then((r) => (r.ok ? r.json() : null))
@@ -176,7 +177,7 @@ export default function ChatPage() {
   const refetchMessagesFromDb = useCallback(async () => {
     if (!token || !selectedConv || selectedConv.id === "__ai__") return;
     try {
-      const res = await fetch(`/api/conversations/${selectedConv.id}/messages`, {
+      const res = await fetch(apiUrl(`/api/conversations/${selectedConv.id}/messages`), {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
@@ -199,7 +200,7 @@ export default function ChatPage() {
       if (selectedConvRef.current) {
         const convId = selectedConvRef.current.id;
         if (token) {
-          fetch(`/api/conversations/${convId}/messages`, {
+          fetch(apiUrl(`/api/conversations/${convId}/messages`), {
             headers: { Authorization: `Bearer ${token}` },
           })
             .then((r) => r.ok ? r.json() : null)
@@ -220,7 +221,7 @@ export default function ChatPage() {
     setShowNewChat(false);
     setLoadingConv(true);
     try {
-      const res = await fetch("/api/conversations/find-or-create", {
+      const res = await fetch(apiUrl("/api/conversations/find-or-create"), {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -230,7 +231,7 @@ export default function ChatPage() {
       });
       if (!res.ok) return;
       const data = await res.json();
-      const msgRes = await fetch(`/api/conversations/${data.id}/messages`, {
+      const msgRes = await fetch(apiUrl(`/api/conversations/${data.id}/messages`), {
         headers: { Authorization: `Bearer ${token}` },
       });
       const msgData = msgRes.ok ? await msgRes.json() : { messages: [] };
@@ -245,7 +246,7 @@ export default function ChatPage() {
     setShowNewChat(false);
     setLoadingConv(true);
     try {
-      const res = await fetch(`/api/conversations/${conv.id}/messages`, {
+      const res = await fetch(apiUrl(`/api/conversations/${conv.id}/messages`), {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = res.ok ? await res.json() : { messages: [] };
@@ -274,7 +275,7 @@ export default function ChatPage() {
     ]);
     fetchConversations();
     try {
-      const res = await fetch(`/api/conversations/${selectedConv.id}/messages`, {
+      const res = await fetch(apiUrl(`/api/conversations/${selectedConv.id}/messages`), {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -339,7 +340,7 @@ export default function ChatPage() {
           role: m.isMe ? ("user" as const) : ("assistant" as const),
           content: m.content,
         }));
-      const res = await fetch("/api/chat/ai", {
+      const res = await fetch(apiUrl("/api/chat/ai"), {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState } from "react";
+import { apiUrl } from "@/lib/api";
 
 export type User = {
   id: string;
@@ -55,7 +56,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         setToken(t);
         setUserState(JSON.parse(u));
-        fetch("/api/auth/me", { headers: { Authorization: `Bearer ${t}` } })
+        fetch(apiUrl("/api/auth/me"), { headers: { Authorization: `Bearer ${t}` } })
           .then((r) => (r.ok ? r.json() : Promise.reject()))
           .then((data) => setUserState(data))
           .catch(() => logout());
