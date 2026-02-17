@@ -523,7 +523,7 @@ export default function ChatPage() {
               />
             </div>
             <div className="h-8 shrink-0" aria-hidden />
-            <nav className="flex flex-col items-center gap-5">
+            <nav className="flex flex-col items-center gap-1">
               <Link
                 href="/"
                 className="p-2 rounded-full flex items-center justify-center"
@@ -532,7 +532,7 @@ export default function ChatPage() {
                 <img
                   src="/icons/icon-home.png"
                   alt="Home"
-                  className="w-7 h-7 object-contain"
+                  className="w-10 h-10 object-contain"
                   width={28}
                   height={28}
                 />
@@ -1039,7 +1039,7 @@ export default function ChatPage() {
 
                       {/* Messages + input in one rounded container (same width) */}
                       <div
-                        className="flex-1 min-h-0 flex flex-col overflow-hidden w-full min-w-0 border border-[var(--border)] bg-[var(--sidebar-bg)]"
+                        className="flex-1 min-h-0 flex flex-col overflow-hidden w-full min-w-0 border border-[var(--border)] bg-[var(--sidebar-bg)] pl-5 pt-2"
                         style={{ borderRadius: "20px", overflow: "hidden" }}
                       >
                         {/* <div className="flex-1 min-h-0 overflow-y-auto w-full px-5 py-5 min-w-0   bg-white"> */}
