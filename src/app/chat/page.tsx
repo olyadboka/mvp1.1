@@ -565,7 +565,7 @@ export default function ChatPage() {
                 <img
                   src="/icons/icon-files.png"
                   alt="Files"
-                  className="w-7 h-7 object-contain"
+                  className="w-10 h-10 object-contain"
                   width={28}
                   height={28}
                 />
@@ -578,7 +578,7 @@ export default function ChatPage() {
                 <img
                   src="/icons/icon-media.png"
                   alt="Media"
-                  className="w-7 h-7 object-contain"
+                  className="w-10 h-10 object-contain"
                   width={28}
                   height={28}
                 />
