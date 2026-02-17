@@ -91,6 +91,7 @@ export function useWebSocket(
                 typeof window !== "undefined"
                   ? window.location.host
                   : "localhost:4000";
+              // Local dev: npm run dev uses Next on 4000 + ws-server on 4001
               if (
                 typeof window !== "undefined" &&
                 window.location.port === "4000"

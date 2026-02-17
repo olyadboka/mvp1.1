@@ -34,16 +34,21 @@ function getOtherParticipant(conversation, userId) {
 }
 
 app.prepare().then(() => {
-  // Next.js app - separate server so Next never sees WebSocket upgrade requests
-  const nextServer = http.createServer((req, res) => handle(req, res));
+  // Single server for both Next.js and WebSocket (required for Railway single PORT)
+  const port = process.env.PORT || 4000;
+  const server = http.createServer((req, res) => handle(req, res));
+  const wss = new WebSocketServer({ noServer: true });
 
-  // WebSocket on its own server (Next.js dev server doesn't support upgrade)
-  const wsPort = process.env.WS_PORT || 4001;
-  const wsHttpServer = http.createServer((_req, res) => {
-    res.writeHead(404);
-    res.end();
+  server.on("upgrade", (request, socket, head) => {
+    const url = new URL(request.url || "", `http://${request.headers.host}`);
+    if (url.pathname === "/ws") {
+      wss.handleUpgrade(request, socket, head, (ws) => {
+        wss.emit("connection", ws, request);
+      });
+    } else {
+      socket.destroy();
+    }
   });
-  const wss = new WebSocketServer({ server: wsHttpServer, path: "/ws" });
 
   wss.on("connection", (ws, req) => {
     ws.userId = null;
@@ -148,11 +153,7 @@ app.prepare().then(() => {
     });
   });
 
-  const port = process.env.PORT || 4000;
-  nextServer.listen(port, () => {
-    console.log(`> Next.js on http://localhost:${port}`);
-  });
-  wsHttpServer.listen(wsPort, () => {
-    console.log(`> WebSocket on ws://localhost:${wsPort}/ws`);
+  server.listen(port, () => {
+    console.log(`> Next.js + WebSocket on http://localhost:${port} (ws at /ws)`);
   });
 });
